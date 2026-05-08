@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import Menu from"@/components/Menu/Menu.vue";
-import Pruebas from "@/components/Pruebas.vue";
+/** Alias que redirige a Home para compatibilidad con rutas legacy. */
+import Home from './home/Home.vue'
 </script>
 
 <template>
-    <Menu></Menu>
-    <Pruebas></Pruebas>
+  <Home />
 </template>

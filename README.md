@@ -1,6 +1,36 @@
 # familiafrontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Frontend simple en **Vue 3 + Vite + TypeScript** con **Vue Router** y **TailwindCSS**, pensado para consumir un backend REST (NestJS) con JWT.
+
+## Requisitos
+
+- Node.js + npm
+- Windows / macOS / Linux
+
+## Variables de entorno
+
+Crear un archivo `.env` en la raíz:
+
+```env
+VITE_API_BASE_URL=http://localhost:3000/
+```
+
+Para desarrollo (`npm run dev`) se usa `.env.development` con `VITE_API_BASE_URL=/api/` y un proxy en Vite para evitar CORS.
+
+## Sesión (JWT)
+
+- Token: `localStorage.access_token`
+- Usuario: `localStorage.user` (JSON)
+
+## Rutas
+
+- `/` Login (layout vacío)
+- `/inicio` Home
+- `/productos`
+- `/inventario`
+- `/facturas`
+- `/reservas`
+- `/contabilidad`
 
 ## Recommended IDE Setup
 
@@ -19,6 +49,8 @@ See [Vite Configuration Reference](https://vite.dev/config/).
 ```sh
 npm install
 ```
+
+> Nota (Windows / PowerShell): si `npm` falla por políticas de ejecución, ejecuta comandos en **CMD** o habilita scripts en PowerShell.
 
 ### Compile and Hot-Reload for Development
 

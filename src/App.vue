@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import DefaultLayout from './layouts/DefaultLayout.vue'
+import EmptyLayout from './layouts/EmptyLayout.vue'
+
+const route = useRoute()
+
+const layout = computed(() => {
+   return route.meta.layout === 'empty' ? EmptyLayout : DefaultLayout
+})
 </script>
 
 <template>
-   <RouterView />
+   <component :is="layout" />
 </template>
 
 
