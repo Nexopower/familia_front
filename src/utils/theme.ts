@@ -1,22 +1,5 @@
 import { getUser } from './auth'
-
-export type ThemeName =
-  | 'corporativo-claro'
-  | 'corporativo-oscuro'
-  | 'natural-claro'
-  | 'natural-oscuro'
-  | 'premium-claro'
-  | 'premium-oscuro'
-  | 'rojo-claro'
-  | 'rojo-oscuro'
-  | 'rojo-neon-claro'
-  | 'rojo-neon-oscuro'
-
-export type ThemeOption = {
-  name: ThemeName
-  label: string
-  group: 'Corporativo' | 'Natural' | 'Premium' | 'Rojo' | 'Neón'
-}
+import type { ThemeName, ThemeOption } from '@/types'
 
 export const THEME_OPTIONS: ThemeOption[] = [
   { name: 'corporativo-claro', label: 'Corporativo (Claro)', group: 'Corporativo' },

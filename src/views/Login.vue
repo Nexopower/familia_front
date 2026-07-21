@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { setSession, type AuthUser, type Negocio } from '@/utils/auth'
+import { setSession } from '@/utils/auth'
+import type { AuthUser, Negocio } from '@/types'
 import { initThemeForCurrentUser } from '@/utils/theme'
 import { apiFetch, ApiError } from '@/utils/api'
 import ErrorAlert from '@/components/shared/ErrorAlert.vue'
@@ -15,6 +16,10 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const negociosLogin = ref<Negocio[]>([])
 const selectedCodneg = ref<string | number | null>(null)
+
+// Recordar usuario: solo se persiste el NOMBRE de usuario (nunca la contraseña).
+const REMEMBER_KEY = 'remember_usuario'
+const rememberUser = ref(false)
 
 /* ── Helpers ── */
 const subtitle = computed(() =>
@@ -67,6 +72,11 @@ async function doLogin() {
       isAdmin: data.user?.isAdmin,
     }
 
+    if (rememberUser.value)
+      localStorage.setItem(REMEMBER_KEY, codusr.value.trim())
+    else
+      localStorage.removeItem(REMEMBER_KEY)
+
     const negocios: Negocio[] = data.negocios ?? data.user?.negocios ?? []
 
     setSession(
@@ -88,7 +98,14 @@ async function doLogin() {
   }
 }
 
-onMounted(loadNegociosLogin)
+onMounted(() => {
+  loadNegociosLogin()
+  const recordado = localStorage.getItem(REMEMBER_KEY)
+  if (recordado) {
+    codusr.value = recordado
+    rememberUser.value = true
+  }
+})
 </script>
 
 <template>
@@ -104,12 +121,18 @@ onMounted(loadNegociosLogin)
 
         <div>
           <label class="block text-sm font-medium text-main mb-1">Usuario</label>
-          <input v-model="codusr" type="text" class="w-full px-3 py-2 input" placeholder="Código de usuario" autocomplete="username" @keyup.enter="doLogin" />
+          <input v-model="codusr" type="text" class="w-full px-3 py-2 input" placeholder="Nombre de login o código" autocomplete="off" @keyup.enter="doLogin" />
         </div>
         <div>
           <label class="block text-sm font-medium text-main mb-1">Contraseña</label>
-          <input v-model="password" type="password" class="w-full px-3 py-2 input" placeholder="••••••••" autocomplete="current-password" @keyup.enter="doLogin" />
+          <!-- autocomplete="new-password": evita que el navegador rellene solo
+               las credenciales guardadas (ej. admin) encima del usuario recordado -->
+          <input v-model="password" type="password" class="w-full px-3 py-2 input" placeholder="••••••••" autocomplete="new-password" @keyup.enter="doLogin" />
         </div>
+
+        <label class="flex items-center gap-2 text-sm text-main">
+          <input v-model="rememberUser" type="checkbox" class="rounded" /> Recordar usuario
+        </label>
 
         <div>
           <label class="block text-sm font-medium text-main mb-1">Negocio (solo requerido para usuario normal)</label>

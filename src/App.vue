@@ -7,12 +7,10 @@ import EmptyLayout from './layouts/EmptyLayout.vue'
 const route = useRoute()
 
 const layout = computed(() => {
-   return route.meta.layout === 'empty' ? EmptyLayout : DefaultLayout
+  return route.meta.layout === 'empty' ? EmptyLayout : DefaultLayout
 })
 </script>
 
 <template>
-   <component :is="layout" />
+  <component :is="layout" />
 </template>
-
-

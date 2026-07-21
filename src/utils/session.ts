@@ -1,5 +1,6 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { SESSION_CHANGED_EVENT, getNegocios, getUser, type AuthUser, type Negocio } from './auth'
+import { SESSION_CHANGED_EVENT, getNegocios, getUser } from './auth'
+import type { AuthUser, Negocio } from '@/types'
 
 export function useSession() {
   const user = ref<AuthUser | null>(getUser())

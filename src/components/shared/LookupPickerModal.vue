@@ -4,14 +4,7 @@ import { ref, watch } from 'vue'
 import BaseModal from '@/components/shared/BaseModal.vue'
 import LoadingSpinner from '@/components/shared/LoadingSpinner.vue'
 import { apiFetch } from '@/utils/api'
-
-type LookupRow = {
-  codigo: string | number
-  nombre: string
-  raw: Record<string, any>
-}
-
-type LookupResponse = Record<string, any> | Array<Record<string, any>>
+import type { LookupRow, LookupResponse } from '@/types'
 
 const props = withDefaults(defineProps<{
   open: boolean

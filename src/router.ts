@@ -9,11 +9,21 @@ const Productos = () => import('@/views/productos/Productos.vue')
 const Inventario = () => import('@/views/inventario/Inventario.vue')
 const InventarioAvanzado = () => import('@/views/inventario/InventarioAvanzado.vue')
 const Facturas = () => import('@/views/facturas/Facturas.vue')
+const Facturaciones = () => import('@/views/facturaciones/Facturaciones.vue')
 const Reservas = () => import('@/views/reservas/Reservas.vue')
 const Contabilidad = () => import('@/views/contabilidad/Contabilidad.vue')
+const Caja = () => import('@/views/caja/Caja.vue')
 const Usuarios = () => import('@/views/usuarios/Usuarios.vue')
+const Personas = () => import('@/views/personas/Personas.vue')
+const Direcciones = () => import('@/views/direcciones/Direcciones.vue')
+const Clientes = () => import('@/views/clientes/Clientes.vue')
+const Proveedores = () => import('@/views/proveedores/Proveedores.vue')
+const Fiaos = () => import('@/views/fiaos/Fiaos.vue')
+const Auditoria = () => import('@/views/auditoria/Auditoria.vue')
+const Fondos = () => import('@/views/fondos/Fondos.vue')
 const Configuraciones = () => import('@/views/configuraciones/Configuraciones.vue')
 const Perfil = () => import('@/views/perfil/Perfil.vue')
+const RolesPermisos = () => import('@/views/rbac/RolesPermisos.vue')
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -62,6 +72,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'FACTURAS' },
   },
   {
+    path: '/facturaciones',
+    name: 'Facturaciones',
+    component: Facturaciones,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'FACTURAS' },
+  },
+  {
     path: '/reservas',
     name: 'Reservas',
     component: Reservas,
@@ -74,16 +90,70 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'CONTABILIDAD' },
   },
   {
+    path: '/caja',
+    name: 'Caja',
+    component: Caja,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'CONTABILIDAD' },
+  },
+  {
     path: '/usuarios',
     name: 'Usuarios',
     component: Usuarios,
     meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'USUARIOS' },
   },
   {
+    path: '/personas',
+    name: 'Personas',
+    component: Personas,
+    meta: { requiresAuth: true, moduleKey: 'USUARIOS' },
+  },
+  {
+    path: '/direcciones',
+    name: 'Direcciones',
+    component: Direcciones,
+    meta: { requiresAuth: true, moduleKey: 'USUARIOS' },
+  },
+  {
+    path: '/clientes',
+    name: 'Clientes',
+    component: Clientes,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'FACTURAS' },
+  },
+  {
+    path: '/proveedores',
+    name: 'Proveedores',
+    component: Proveedores,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'FACTURAS' },
+  },
+  {
+    path: '/fiaos',
+    name: 'Fiaos',
+    component: Fiaos,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'FACTURAS' },
+  },
+  {
+    path: '/auditoria',
+    name: 'Auditoria',
+    component: Auditoria,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'AUDITORIA' },
+  },
+  {
+    path: '/fondos',
+    name: 'Fondos',
+    component: Fondos,
+    meta: { requiresAuth: true, requiresNegocio: true, moduleKey: 'FONDOS' },
+  },
+  {
     path: '/configuraciones',
     name: 'Configuraciones',
     component: Configuraciones,
     meta: { requiresAuth: true, requiresNegocio: true },
+  },
+  {
+    path: '/roles-permisos',
+    name: 'RolesPermisos',
+    component: RolesPermisos,
+    meta: { requiresAuth: true },
   },
   {
     path: '/perfil',

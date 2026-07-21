@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiFetch } from '@/utils/api'
 import { useSession } from '@/utils/session'
+import type { PerfilData } from '@/types'
 import ThemeSelector from '@/components/Elements/ThemeSelector.vue'
 import LoadingSpinner from '@/components/shared/LoadingSpinner.vue'
 import ErrorAlert from '@/components/shared/ErrorAlert.vue'
@@ -15,7 +16,6 @@ import ErrorAlert from '@/components/shared/ErrorAlert.vue'
 const { user, negocios } = useSession()
 const codneg = computed(() => { const v = Number(user.value?.codneg); return Number.isFinite(v) && v > 0 ? v : null })
 
-type PerfilData = { codusr: string; nombre?: string; apellido?: string; email?: string; telefono?: string; rol?: string; estado?: string }
 const perfil = ref<PerfilData | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -54,8 +54,12 @@ onMounted(loadPerfil)
           <p class="font-medium text-main">{{ perfil?.codusr ?? user?.codusr ?? '—' }}</p>
         </div>
         <div>
+          <span class="text-muted">Login:</span>
+          <p class="font-medium text-main">{{ perfil?.login ?? user?.nombre ?? '—' }}</p>
+        </div>
+        <div>
           <span class="text-muted">Nombre:</span>
-          <p class="font-medium text-main">{{ perfil?.nombre ?? user?.nombre ?? '—' }} {{ perfil?.apellido ?? '' }}</p>
+          <p class="font-medium text-main">{{ perfil?.nombre ?? '—' }} {{ perfil?.apellido ?? '' }}</p>
         </div>
         <div>
           <span class="text-muted">Email:</span>
@@ -67,7 +71,7 @@ onMounted(loadPerfil)
         </div>
         <div>
           <span class="text-muted">Rol actual:</span>
-          <p class="font-medium text-main">{{ perfil?.rol ?? user?.codrol ?? '—' }}</p>
+          <p class="font-medium text-main">{{ perfil?.rol ?? (user?.isAdmin ? 'SUPERADMIN' : '—') }}</p>
         </div>
         <div>
           <span class="text-muted">Estado:</span>

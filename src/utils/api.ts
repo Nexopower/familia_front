@@ -72,7 +72,11 @@ export async function apiFetch<T>(
 
   let response = await fetch(url, { ...options, headers })
 
-  if (response.status === 401) {
+  // Un 401 del propio login NO es "sesión expirada": son credenciales inválidas
+  // y debe mostrarse el mensaje real del backend (cae al manejador !response.ok).
+  const isLoginRequest = path === 'auth/login' || path.endsWith('/auth/login')
+
+  if (response.status === 401 && !isLoginRequest) {
     const isRefreshRequest = path === 'auth/refresh' || path.endsWith('/auth/refresh')
     if (!isRefreshRequest) {
       const refreshed = await refreshAccessToken()

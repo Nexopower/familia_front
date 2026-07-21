@@ -1,23 +1,5 @@
-export type AuthUser = {
-  codusr: string
-  codper?: number
-  nombre?: string
-
-  codrol?: string | number | null
-  codneg?: string | number | null
-  audit?: unknown
-
-  esdueno?: boolean
-  loginmulti?: boolean
-  isAdmin?: boolean
-}
-
-export type Negocio = {
-  codneg: string | number
-  nombre: string
-  esdueno?: boolean
-  esprincipal?: boolean
-}
+export type { AuthUser, Negocio } from '@/types'
+import type { Negocio, SwitchNegocioResponse } from '@/types'
 
 export const SESSION_CHANGED_EVENT = 'session-changed'
 
@@ -132,6 +114,17 @@ export async function refreshAccessToken(): Promise<boolean> {
   }
 }
 
+/** Reemplaza la lista de negocios de la sesión (solo notifica si cambió). */
+export function setNegocios(negocios: Negocio[]) {
+  const next = JSON.stringify(negocios ?? [])
+  const current = localStorage.getItem(NEGOCIOS_KEY)
+  if (current === next)
+    return
+
+  localStorage.setItem(NEGOCIOS_KEY, next)
+  notifySessionChanged()
+}
+
 export function patchUser(patch: Partial<AuthUser>) {
   const current = getUser() || ({} as AuthUser)
   const next = { ...current, ...patch }
@@ -221,14 +214,7 @@ export async function logout(redirect: boolean = true) {
   }
 }
 
-export type SwitchNegocioResponse = {
-  accessToken: string
-  expiresIn: number
-  codneg: string | number
-  codrol: string | number
-}
-
-export async function switchNegocio(codneg: string | number): Promise<SwitchNegocioResponse> {
+export async function switchNegocio(codneg: string | number | null): Promise<SwitchNegocioResponse> {
   const token = getToken()
   if (!token)
     throw new Error('No hay token en sesión')
@@ -240,6 +226,7 @@ export async function switchNegocio(codneg: string | number): Promise<SwitchNego
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     },
+    // codneg null = deseleccionar (vista general sin negocio)
     body: JSON.stringify({ codneg }),
   })
 

@@ -11,12 +11,16 @@
  *   codneg → de sesión automática
  *
  * Campos que llena el admin:
- *   codusr, nombre_usr, password, esdueno, loginmulti
+ *   nombre_usr, password, esdueno, loginmulti, negocios adicionales
+ *
+ * El código de usuario (codusr) se GENERA automáticamente en el backend con
+ * formato LLLNNNNN (3 letras = árbol del dueño, 5 dígitos = consecutivo del
+ * árbol). Aquí solo se muestra en modo lectura tras la creación.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiFetch } from '@/utils/api'
 import { useSession } from '@/utils/session'
-import type { AuthzCheckResponse } from '@/types'
+import type { AuthzCheckResponse, UsuarioRow, RolOption, PersonaRef } from '@/types'
 
 import BaseTable, { type Column } from '@/components/shared/BaseTable.vue'
 import BaseModal from '@/components/shared/BaseModal.vue'
@@ -29,26 +33,15 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import PersonaSearchModal from '@/components/personas/PersonaSearchModal.vue'
 import PersonaCreateModal from '@/components/personas/PersonaCreateModal.vue'
 
-type UsuarioRow = {
-  codusr: string
-  nombre_usr: string
-  codper?: number | null
-  codrol?: number | null
-  esdueno?: boolean
-  loginmulti?: boolean
-  estado?: string | null
-  persona_nombre?: string | null
-  persona_apellido?: string | null
-  rol_nombre?: string | null
-}
-type RolOption = { codrol: number; nombre: string }
-type PersonaRef = { codper: number; nombre: string; apellidos: string; email?: string | null }
+// types moved to src/types
 
-const { user } = useSession()
+const { user, negocios } = useSession()
 const codneg = computed(() => {
   const v = Number(user.value?.codneg)
   return Number.isFinite(v) && v > 0 ? v : null
 })
+// Negocios disponibles para acceso adicional (excluye el negocio actual).
+const otrosNegocios = computed(() => negocios.value.filter(n => Number(n.codneg) !== Number(codneg.value)))
 const isAdmin = computed(() => Boolean(user.value?.isAdmin || user.value?.codusr === 'admin'))
 
 /* ── Permisos ── */
@@ -120,23 +113,30 @@ const showPersonaSearch = ref(false)
 const showPersonaCreate = ref(false)
 const createLoading = ref(false)
 
-const newCodusr = ref('')
 const newNombreUsr = ref('')
 const newPassword = ref('')
 const newCodrol = ref<number | null>(null)
 const newEsdueno = ref(false)
 const newLoginmulti = ref(false)
+const newCodnegs = ref<Set<number>>(new Set())
 const selectedPersona = ref<PersonaRef | null>(null)
+const okMsg = ref<string | null>(null)
 
 function resetCreateForm() {
-  newCodusr.value = ''
   newNombreUsr.value = ''
   newPassword.value = ''
   newCodrol.value = null
   newEsdueno.value = false
   newLoginmulti.value = false
+  newCodnegs.value = new Set()
   selectedPersona.value = null
   error.value = null
+}
+
+function toggleNegocioExtra(cn: number) {
+  const s = new Set(newCodnegs.value)
+  s.has(cn) ? s.delete(cn) : s.add(cn)
+  newCodnegs.value = s
 }
 
 function onPersonaSelected(persona: any) {
@@ -151,31 +151,75 @@ function onPersonaCreated(persona: any) {
 
 async function createUsuario() {
   error.value = null
-  if (!newCodusr.value.trim()) { error.value = 'Código de usuario requerido'; return }
   if (!newNombreUsr.value.trim()) { error.value = 'Nombre de login requerido'; return }
   if (!newPassword.value) { error.value = 'Contraseña requerida'; return }
   if (!selectedPersona.value) { error.value = 'Debes seleccionar una persona'; return }
 
   createLoading.value = true
   try {
-    await apiFetch(`negocios/${codneg.value}/usuarios`, {
+    // El código NO se envía: lo genera el backend (formato LLLNNNNN).
+    const creado = await apiFetch<{ codusr?: string }>(`negocios/${codneg.value}/usuarios`, {
       method: 'POST',
       body: JSON.stringify({
-        codusr: newCodusr.value.trim(),
         nombre: newNombreUsr.value.trim(),
         password: newPassword.value,
         codper: selectedPersona.value.codper,
         codrol: newCodrol.value,
+        esdueno: newEsdueno.value,
+        loginmulti: newLoginmulti.value,
+        codnegs: newLoginmulti.value ? Array.from(newCodnegs.value) : [],
       }),
     })
     showCreate.value = false
     resetCreateForm()
+    okMsg.value = creado?.codusr
+      ? `Usuario creado con código ${creado.codusr}.`
+      : 'Usuario creado correctamente.'
     await loadUsuarios()
   } catch (e: any) {
     error.value = e?.message ?? 'Error creando usuario'
   } finally {
     createLoading.value = false
   }
+}
+
+/* ── Asignar usuario existente a este negocio ── */
+const showAsignar = ref(false)
+const asignarQ = ref('')
+const asignarResultados = ref<any[]>([])
+const asignarSel = ref<any | null>(null)
+const asignarCodrol = ref<number | null>(null)
+const asignarLoading = ref(false)
+const asignarBuscando = ref(false)
+
+function openAsignar() {
+  asignarQ.value = ''; asignarResultados.value = []; asignarSel.value = null; asignarCodrol.value = null
+  showAsignar.value = true
+}
+
+async function buscarAsignables() {
+  if (asignarQ.value.trim().length < 2) { asignarResultados.value = []; return }
+  asignarBuscando.value = true
+  try {
+    asignarResultados.value = await apiFetch<any[]>(`negocios/${codneg.value}/usuarios/buscar?q=${encodeURIComponent(asignarQ.value.trim())}`)
+  } catch { asignarResultados.value = [] }
+  finally { asignarBuscando.value = false }
+}
+
+async function doAsignar() {
+  if (!asignarSel.value || !codneg.value) return
+  asignarLoading.value = true; error.value = null
+  try {
+    // El endpoint de rol hace MERGE: crea el vínculo usuario-negocio si no existe.
+    await apiFetch(`negocios/${codneg.value}/usuarios/${asignarSel.value.codusr}/rol`, {
+      method: 'PATCH',
+      body: JSON.stringify({ codrol: asignarCodrol.value }),
+    })
+    showAsignar.value = false
+    okMsg.value = `Usuario ${asignarSel.value.codusr} asignado a este negocio.`
+    await loadUsuarios()
+  } catch (e: any) { error.value = e?.message ?? 'Error asignando usuario' }
+  finally { asignarLoading.value = false }
 }
 
 /* ── Cambiar rol ── */
@@ -264,6 +308,9 @@ watch(codneg, async () => {
           <button v-if="perms.crear || isAdmin" type="button" class="px-4 py-2 btn btn-primary text-sm" @click="showCreate = true; resetCreateForm()">
             + Nuevo usuario
           </button>
+          <button v-if="perms.rolCambiar || isAdmin" type="button" class="px-4 py-2 btn btn-secondary text-sm" @click="openAsignar">
+            Asignar existente
+          </button>
           <button type="button" class="px-4 py-2 btn btn-secondary text-sm" :disabled="loading" @click="loadUsuarios">
             Recargar
           </button>
@@ -272,6 +319,10 @@ watch(codneg, async () => {
     </div>
 
     <ErrorAlert v-if="error" :message="error" @dismiss="error = null" />
+    <div v-if="okMsg" class="card p-3 text-sm text-green-700 bg-green-50 border border-green-200 flex items-center justify-between">
+      <span>{{ okMsg }}</span>
+      <button type="button" class="text-green-700 hover:underline text-xs" @click="okMsg = null">×</button>
+    </div>
     <LoadingSpinner v-if="loading" />
 
     <!-- Tabla -->
@@ -279,6 +330,7 @@ watch(codneg, async () => {
       <BaseTable :columns="columns" :rows="usuarios" row-key="codusr" striped>
         <template #cell-persona_nombre="{ row }">
           {{ row.persona_nombre ?? '—' }} {{ row.persona_apellido ?? '' }}
+          <span v-if="row.esdueno_negocio" class="ml-1 text-xs" title="Dueño de este negocio">👑</span>
         </template>
         <template #cell-estado="{ row }">
           <StatusBadge :estado="row.estado" />
@@ -326,14 +378,15 @@ watch(codneg, async () => {
 
         <!-- Datos del usuario -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField label="Código de usuario" required hint="Máximo 8 caracteres, identificador único">
-            <input v-model="newCodusr" type="text" maxlength="8" class="w-full px-3 py-2 input" placeholder="usr001" />
+          <FormField label="Código de usuario" hint="Se genera automáticamente al crear (formato AAA00001)">
+            <input value="Automático" type="text" disabled class="w-full px-3 py-2 input opacity-60 cursor-not-allowed" />
           </FormField>
           <FormField label="Nombre de login" required hint="Nombre con el que iniciará sesión">
-            <input v-model="newNombreUsr" type="text" class="w-full px-3 py-2 input" placeholder="juan.perez" />
+            <input v-model="newNombreUsr" type="text" class="w-full px-3 py-2 input" placeholder="juan.perez" autocomplete="off" name="nuevo-login" />
           </FormField>
           <FormField label="Contraseña" required>
-            <input v-model="newPassword" type="password" class="w-full px-3 py-2 input" placeholder="••••••••" />
+            <!-- new-password: impide que Chrome rellene aquí las credenciales guardadas -->
+            <input v-model="newPassword" type="password" class="w-full px-3 py-2 input" placeholder="••••••••" autocomplete="new-password" name="nueva-contrasena" />
           </FormField>
           <FormField label="Rol" hint="Rol en este negocio">
             <select v-model="newCodrol" class="w-full px-3 py-2 input">
@@ -350,6 +403,21 @@ watch(codneg, async () => {
           <label class="flex items-center gap-2 text-sm text-main">
             <input v-model="newLoginmulti" type="checkbox" class="rounded" /> Login multi-negocio
           </label>
+        </div>
+
+        <!-- Negocios adicionales (solo login multi-negocio) -->
+        <div v-if="newLoginmulti" class="p-3 rounded-md border border-base space-y-2">
+          <h4 class="text-sm font-semibold text-main">Acceso a negocios</h4>
+          <p class="text-xs text-muted">
+            Tendrá acceso a <strong>{{ negocios.find(n => Number(n.codneg) === Number(codneg))?.nombre ?? 'este negocio' }}</strong> (actual). Marca los negocios adicionales:
+          </p>
+          <div v-if="otrosNegocios.length" class="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            <label v-for="n in otrosNegocios" :key="n.codneg" class="flex items-center gap-2 text-sm text-main px-2 py-1 rounded hover:bg-[var(--menu-hover)]">
+              <input type="checkbox" class="rounded" :checked="newCodnegs.has(Number(n.codneg))" @change="toggleNegocioExtra(Number(n.codneg))" />
+              {{ n.nombre }}
+            </label>
+          </div>
+          <p v-else class="text-xs text-muted">No tienes otros negocios disponibles.</p>
         </div>
       </div>
 
@@ -391,6 +459,43 @@ watch(codneg, async () => {
       @confirm="doToggleEstado"
       @cancel="showConfirmEstado = false"
     />
+
+    <!-- ═══ MODAL: Asignar usuario existente ═══ -->
+    <BaseModal :open="showAsignar" title="Asignar usuario a este negocio" size="md" @close="showAsignar = false">
+      <div class="space-y-3">
+        <p class="text-xs text-muted">Busca un usuario existente y asígnalo a este negocio con su rol. El mismo usuario puede tener roles distintos en cada negocio.</p>
+        <div class="flex gap-2">
+          <input v-model="asignarQ" type="text" class="flex-1 px-3 py-2 input" placeholder="Código, login o nombre de persona…" @keyup.enter="buscarAsignables" />
+          <button type="button" class="px-3 py-2 btn btn-secondary text-sm" :disabled="asignarBuscando" @click="buscarAsignables">Buscar</button>
+        </div>
+
+        <div v-if="asignarResultados.length" class="space-y-1 max-h-52 overflow-y-auto">
+          <label v-for="u in asignarResultados" :key="u.codusr"
+            class="flex items-center gap-2 px-3 py-2 rounded border cursor-pointer"
+            :class="asignarSel?.codusr === u.codusr ? 'border-[var(--color-accent)] bg-[var(--menu-hover)]' : 'border-base hover:bg-[var(--menu-hover)]'">
+            <input type="radio" name="asignarSel" :checked="asignarSel?.codusr === u.codusr" @change="asignarSel = u" />
+            <div class="min-w-0">
+              <p class="text-sm text-main font-medium">{{ u.codusr }} · {{ u.nombre_usr }}</p>
+              <p class="text-xs text-muted truncate">{{ u.persona_nombre ?? '' }} {{ u.persona_apellido ?? '' }}</p>
+            </div>
+          </label>
+        </div>
+        <p v-else-if="asignarQ.trim().length >= 2 && !asignarBuscando" class="text-xs text-muted">Sin resultados (o ya están vinculados a este negocio).</p>
+
+        <FormField v-if="asignarSel" label="Rol en este negocio">
+          <select v-model="asignarCodrol" class="w-full px-3 py-2 input">
+            <option :value="null">— Sin rol —</option>
+            <option v-for="r in roles" :key="r.codrol" :value="r.codrol">{{ r.nombre }}</option>
+          </select>
+        </FormField>
+      </div>
+      <template #footer>
+        <button type="button" class="px-4 py-2 btn btn-secondary text-sm" @click="showAsignar = false">Cancelar</button>
+        <button type="button" class="px-4 py-2 btn btn-primary text-sm disabled:opacity-60" :disabled="!asignarSel || asignarLoading" @click="doAsignar">
+          {{ asignarLoading ? 'Asignando…' : 'Asignar' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Modales de persona -->
     <PersonaSearchModal :open="showPersonaSearch" @select="onPersonaSelected" @close="showPersonaSearch = false" />

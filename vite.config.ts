@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
+import componentPreview from "vite-plugin-component-preview"; 
 
 // https://vite.dev/config/
 export default defineConfig({

@@ -5,77 +5,16 @@ import { apiFetch } from '@/utils/api'
 import { switchNegocio } from '@/utils/auth'
 import { setCachedVisibleModuleKeys } from '@/utils/rbac'
 import { useSession } from '@/utils/session'
+import type { MiNegocio, AdminNegocio, NegocioTabla, PermisoItem, DuenoNegocio, DuenoCandidate, NegocioMeta } from '@/types'
 
 import ErrorAlert from '@/components/shared/ErrorAlert.vue'
 import LoadingSpinner from '@/components/shared/LoadingSpinner.vue'
 import BaseModal from '@/components/shared/BaseModal.vue'
 import FormField from '@/components/shared/FormField.vue'
+import DireccionSearchModal from '@/components/direcciones/DireccionSearchModal.vue'
+import DireccionCreateModal from '@/components/direcciones/DireccionCreateModal.vue'
 
-type MiNegocio = {
-  codneg: number
-  nombre: string
-  esdueno?: boolean
-  esprincipal?: boolean
-  codrol?: number | null
-  nombre_rol?: string | null
-}
-
-type AdminNegocio = {
-  codneg: number
-  nombre: string
-  telefono?: string | null
-  estado: 'A' | 'I'
-  direccion?: string | null
-  stock_min_default?: number | null
-}
-
-type NegocioTabla = {
-  codneg: number
-  nombre: string
-  estado: 'A' | 'I'
-  direccion?: string | null
-  stock_min_default?: number | null
-  accesoUsuario: boolean
-  esdueno?: boolean
-  esprincipal?: boolean
-  codrol?: number | null
-  nombre_rol?: string | null
-}
-
-type PermisoItem = {
-  codprm: number
-  clave: string
-  nombre: string
-  modulo?: string | null
-}
-
-type DuenoNegocio = {
-  codneg: number
-  codusr: string
-  esprincipal?: boolean
-  nombre_usr?: string | null
-  nombre_per?: string | null
-  apellido_per?: string | null
-  email_per?: string | null
-}
-
-type DuenoCandidate = {
-  codusr: string
-  nombre_usr?: string | null
-  nombre_per?: string | null
-  apellido_per?: string | null
-  email_per?: string | null
-}
-
-type NegocioMeta = {
-  fields: {
-    nombre: boolean
-    estado: boolean
-    direccion: boolean
-    telefono: boolean
-    stock_min_default: boolean
-  }
-}
+// types moved to src/types
 
 const router = useRouter()
 const { user } = useSession()
@@ -125,18 +64,30 @@ const negocioMeta = ref<NegocioMeta>({
 const creating = ref({
   nombre: '',
   direccion: '',
+  coddir: null as number | null,
   telefono: '',
   stock_min_default: 0,
   estado: 'A' as 'A' | 'I',
 })
 
-const editingCodneg = ref<number | null>(null)
-const editing = ref({
-  nombre: '',
-  direccion: '',
-  stock_min_default: 0,
-  estado: 'A' as 'A' | 'I',
-})
+// null = modal en modo CREAR; con valor = editando ese negocio.
+const modalEditCodneg = ref<number | null>(null)
+
+/* ── Selector de dirección (buscar existente / crear nueva) ── */
+const showDirSearch = ref(false)
+const showDirCreate = ref(false)
+
+function onDireccionSelected(dir: { coddir: number; direccion: string; sector?: string | null; ciudad?: string | null }) {
+  creating.value.coddir = dir.coddir
+  creating.value.direccion = [dir.direccion, dir.sector, dir.ciudad].filter(Boolean).join(', ')
+  showDirSearch.value = false
+  showDirCreate.value = false
+}
+
+function quitarDireccion() {
+  creating.value.coddir = null
+  creating.value.direccion = ''
+}
 
 const negociosTabla = computed<NegocioTabla[]>(() => {
   const accessMap = new Map<number, MiNegocio>()
@@ -151,6 +102,8 @@ const negociosTabla = computed<NegocioTabla[]>(() => {
           nombre: row.nombre,
           estado: (row.estado === 'I' ? 'I' : 'A') as 'A' | 'I',
           direccion: row.direccion ?? null,
+          coddir: row.coddir ?? null,
+          telefono: row.telefono ?? null,
           stock_min_default: row.stock_min_default ?? null,
           accesoUsuario: Boolean(access),
           esdueno: Boolean(access?.esdueno),
@@ -204,6 +157,52 @@ const permisosFiltrados = computed(() => {
   )
 })
 
+/* ── Catálogo de permisos agrupado por módulo ── */
+const modulosColapsados = ref<Set<string>>(new Set())
+
+// Etiqueta legible de la acción a partir de la clave (sin el prefijo del módulo).
+const VERBOS: Record<string, string> = {
+  VER: 'Ver', CREAR: 'Crear', EDITAR: 'Editar', ELIMINAR: 'Eliminar',
+  GESTIONAR: 'Gestionar', CERRAR: 'Cerrar', CAMBIAR: 'Cambiar',
+  CONFIGURAR: 'Configurar', REPROGRAMAR: 'Reprogramar', INGRESO: 'Ingreso',
+  EGRESO: 'Egreso', MOVIMIENTO: 'Movimiento', UNIDADES: 'Unidades',
+  CONVERSIONES: 'Conversiones', TRANSFORMACIONES: 'Transformaciones',
+  CATEGORIAS: 'Categorías', MARCAS: 'Marcas', RECETAS: 'Recetas', ROL: 'Rol',
+  ESTADO: 'Estado', ROLES_CREABLES: 'Roles creables', MODIFICAR_PRECIO: 'Modificar precio',
+}
+function accionLabel(clave: string, modulo?: string | null): string {
+  const prefijo = (modulo ?? '').toUpperCase() + '.'
+  let resto = clave.toUpperCase().startsWith(prefijo) ? clave.slice(prefijo.length) : clave
+  return resto.split('.').map(p => VERBOS[p] ?? (p.charAt(0) + p.slice(1).toLowerCase())).join(' · ')
+}
+
+const ICONOS_MODULO: Record<string, string> = {
+  DASHBOARD: '📊', PRODUCTOS: '🏷️', INVENTARIO: '📦', FACTURAS: '🧾',
+  RESERVAS: '📅', CONTABILIDAD: '💰', USUARIOS: '👥', CONFIGURACIONES: '⚙️',
+}
+
+const permisosPorModulo = computed(() => {
+  const grupos = new Map<string, PermisoItem[]>()
+  for (const p of permisosFiltrados.value) {
+    const mod = p.modulo || 'OTROS'
+    if (!grupos.has(mod)) grupos.set(mod, [])
+    grupos.get(mod)!.push(p)
+  }
+  return Array.from(grupos.entries())
+    .map(([modulo, items]) => ({ modulo, items, icono: ICONOS_MODULO[modulo] ?? '🔑' }))
+    .sort((a, b) => a.modulo.localeCompare(b.modulo))
+})
+
+const buscandoPermiso = computed(() => permisosSearch.value.trim().length > 0)
+function moduloAbierto(mod: string) { return buscandoPermiso.value || !modulosColapsados.value.has(mod) }
+function toggleModulo(mod: string) {
+  const s = new Set(modulosColapsados.value)
+  s.has(mod) ? s.delete(mod) : s.add(mod)
+  modulosColapsados.value = s
+}
+function expandirTodos() { modulosColapsados.value = new Set() }
+function colapsarTodos() { modulosColapsados.value = new Set(permisosPorModulo.value.map(g => g.modulo)) }
+
 function resetMessages() {
   error.value = null
   success.value = null
@@ -213,6 +212,7 @@ function resetCreateRow() {
   creating.value = {
     nombre: '',
     direccion: '',
+    coddir: null,
     telefono: '',
     stock_min_default: 0,
     estado: 'A',
@@ -221,27 +221,22 @@ function resetCreateRow() {
 
 function openCreateModal() {
   resetCreateRow()
+  modalEditCodneg.value = null
   showCreateModal.value = true
 }
 
+/** Editar abre el MISMO modal de crear, precargado con los datos de la fila. */
 function startEdit(row: NegocioTabla) {
-  editingCodneg.value = row.codneg
-  editing.value = {
+  modalEditCodneg.value = row.codneg
+  creating.value = {
     nombre: row.nombre,
     direccion: row.direccion ?? '',
+    coddir: (row as any).coddir ?? null,
+    telefono: (row as any).telefono ?? '',
     stock_min_default: row.stock_min_default ?? 0,
     estado: row.estado === 'I' ? 'I' : 'A',
   }
-}
-
-function cancelEdit() {
-  editingCodneg.value = null
-  editing.value = {
-    nombre: '',
-    direccion: '',
-    stock_min_default: 0,
-    estado: 'A',
-  }
+  showCreateModal.value = true
 }
 
 function ownerDisplayName(owner: DuenoNegocio | DuenoCandidate) {
@@ -406,6 +401,7 @@ async function loadAll() {
   }
 }
 
+/** Crea o actualiza según el modo del modal (modalEditCodneg). */
 async function createNegocio() {
   const nombre = creating.value.nombre.trim()
   if (!nombre) {
@@ -413,62 +409,41 @@ async function createNegocio() {
     return
   }
 
-  savingRow.value = 'new'
+  const esEdicion = modalEditCodneg.value !== null
+  savingRow.value = esEdicion ? modalEditCodneg.value : 'new'
   resetMessages()
   try {
     const payload: Record<string, any> = {
       nombre,
       estado: creating.value.estado,
+      coddir: creating.value.coddir,
     }
     if (negocioMeta.value.fields.direccion)
-      payload.direccion = creating.value.direccion.trim() || undefined
+      payload.direccion = creating.value.direccion.trim() || null
     if (negocioMeta.value.fields.telefono)
-      payload.telefono = creating.value.telefono.trim() || undefined
+      payload.telefono = creating.value.telefono.trim() || null
     if (negocioMeta.value.fields.stock_min_default)
       payload.stock_min_default = creating.value.stock_min_default
 
-    await apiFetch('configuraciones/negocios', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
-    success.value = 'Negocio creado correctamente.'
+    if (esEdicion) {
+      await apiFetch(`configuraciones/negocios/${modalEditCodneg.value}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+      success.value = 'Negocio actualizado correctamente.'
+    } else {
+      await apiFetch('configuraciones/negocios', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      success.value = 'Negocio creado correctamente.'
+    }
     resetCreateRow()
+    modalEditCodneg.value = null
     showCreateModal.value = false
     await Promise.all([loadAdminNegocios(), loadMisNegocios()])
   } catch (e: any) {
-    error.value = e?.message ?? 'Error creando negocio'
-  } finally {
-    savingRow.value = null
-  }
-}
-
-async function saveEdit() {
-  if (!editingCodneg.value)
-    return
-
-  const nombre = editing.value.nombre.trim()
-  if (!nombre) {
-    error.value = 'El nombre del negocio es obligatorio.'
-    return
-  }
-
-  savingRow.value = editingCodneg.value
-  resetMessages()
-  try {
-    await apiFetch(`configuraciones/negocios/${editingCodneg.value}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        nombre,
-        direccion: editing.value.direccion.trim() || null,
-        stock_min_default: editing.value.stock_min_default,
-        estado: editing.value.estado,
-      }),
-    })
-    success.value = 'Negocio actualizado correctamente.'
-    cancelEdit()
-    await Promise.all([loadAdminNegocios(), loadMisNegocios()])
-  } catch (e: any) {
-    error.value = e?.message ?? 'Error actualizando negocio'
+    error.value = e?.message ?? (esEdicion ? 'Error actualizando negocio' : 'Error creando negocio')
   } finally {
     savingRow.value = null
   }
@@ -483,8 +458,6 @@ async function inactivarNegocio(row: NegocioTabla) {
   try {
     await apiFetch(`configuraciones/negocios/${row.codneg}`, { method: 'DELETE' })
     success.value = `Negocio "${row.nombre}" inactivado.`
-    if (editingCodneg.value === row.codneg)
-      cancelEdit()
     await loadAdminNegocios()
   } catch (e: any) {
     error.value = e?.message ?? 'Error inactivando negocio'
@@ -620,19 +593,19 @@ watch(codnegActivo, async () => {
         </div>
 
         <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[1180px] text-sm">
+          <table class="w-full min-w-[1080px] text-sm">
             <thead>
-              <tr class="border-b text-left" style="border-color: var(--color-border); background: var(--color-bg-subtle, #f9fafb)">
-                <th class="px-4 py-3 text-muted font-medium w-20">Código</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[220px]">Nombre</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[220px]">Dirección</th>
-                <th class="px-4 py-3 text-muted font-medium w-36">Stock mín.</th>
-                <th class="px-4 py-3 text-muted font-medium w-28">Estado</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[220px]">Dueños</th>
-                <th class="px-4 py-3 text-muted font-medium w-40">Acceso usuario</th>
-                <th class="px-4 py-3 text-muted font-medium w-40">Rol</th>
-                <th class="px-4 py-3 text-muted font-medium w-28">Sesión</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[320px]">Acciones</th>
+              <tr class="border-b text-left" style="border-color: var(--color-border); background: var(--card-bg-2)">
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider w-16">Código</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider min-w-[180px]">Nombre</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider min-w-[160px]">Dirección</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider w-24">Stock mín.</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider w-24">Estado</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider min-w-[170px]">Dueños</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider w-32">Acceso</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider w-28">Rol</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider w-20">Sesión</th>
+                <th class="px-3 py-3 text-muted font-medium text-xs uppercase tracking-wider min-w-[240px]">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -643,37 +616,17 @@ watch(codnegActivo, async () => {
               >
                 <td class="px-4 py-3 text-muted">{{ row.codneg }}</td>
 
-                <template v-if="editingCodneg === row.codneg && isAdmin">
-                  <td class="px-4 py-3">
-                    <input v-model="editing.nombre" type="text" class="input w-full px-3 py-2" />
-                  </td>
-                  <td class="px-4 py-3">
-                    <input v-model="editing.direccion" type="text" class="input w-full px-3 py-2" />
-                  </td>
-                  <td class="px-4 py-3">
-                    <input v-model.number="editing.stock_min_default" type="number" min="0" class="input w-full px-3 py-2" />
-                  </td>
-                  <td class="px-4 py-3">
-                    <select v-model="editing.estado" class="input w-full px-3 py-2">
-                      <option value="A">Activo</option>
-                      <option value="I">Inactivo</option>
-                    </select>
-                  </td>
-                </template>
-
-                <template v-else>
-                  <td class="px-4 py-3 font-medium text-main">{{ row.nombre }}</td>
-                  <td class="px-4 py-3 text-muted">{{ row.direccion || '—' }}</td>
-                  <td class="px-4 py-3 text-muted">{{ row.stock_min_default ?? '—' }}</td>
-                  <td class="px-4 py-3">
-                    <span
-                      class="text-xs px-2 py-0.5 rounded-full font-medium"
-                      :class="row.estado === 'A' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
-                    >
-                      {{ row.estado === 'A' ? 'Activo' : 'Inactivo' }}
-                    </span>
-                  </td>
-                </template>
+                <td class="px-4 py-3 font-medium text-main">{{ row.nombre }}</td>
+                <td class="px-4 py-3 text-muted">{{ row.direccion || '—' }}</td>
+                <td class="px-4 py-3 text-muted">{{ row.stock_min_default ?? '—' }}</td>
+                <td class="px-4 py-3">
+                  <span
+                    class="text-xs px-2 py-0.5 rounded-full font-medium"
+                    :class="row.estado === 'A' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                  >
+                    {{ row.estado === 'A' ? 'Activo' : 'Inactivo' }}
+                  </span>
+                </td>
 
                 <td class="px-4 py-3 text-muted">
                   <div v-if="isAdmin" class="space-y-2">
@@ -741,26 +694,12 @@ watch(codnegActivo, async () => {
 
                     <template v-if="isAdmin">
                       <button
-                        v-if="editingCodneg !== row.codneg"
                         type="button"
                         class="btn btn-secondary px-3 py-2 text-xs"
                         @click="startEdit(row)"
                       >
                         Editar
                       </button>
-                      <template v-else>
-                        <button
-                          type="button"
-                          class="btn btn-primary px-3 py-2 text-xs disabled:opacity-60"
-                          :disabled="savingRow === row.codneg"
-                          @click="saveEdit"
-                        >
-                          {{ savingRow === row.codneg ? 'Guardando…' : 'Guardar' }}
-                        </button>
-                        <button type="button" class="btn btn-secondary px-3 py-2 text-xs" @click="cancelEdit">
-                          Cancelar
-                        </button>
-                      </template>
 
                       <button
                         v-if="row.estado === 'A'"
@@ -860,10 +799,10 @@ watch(codnegActivo, async () => {
       </div>
     </section>
 
-    <BaseModal :open="showCreateModal" title="Crear negocio" size="md" @close="showCreateModal = false">
+    <BaseModal :open="showCreateModal" :title="modalEditCodneg ? `Editar negocio #${modalEditCodneg}` : 'Crear negocio'" size="md" @close="showCreateModal = false">
       <div class="space-y-4">
         <p class="text-sm text-muted">
-          Completa todos los campos requeridos por tu esquema de base de datos para crear el negocio.
+          {{ modalEditCodneg ? 'Modifica los datos del negocio.' : 'Completa los campos para crear el negocio.' }}
         </p>
 
         <FormField label="Nombre" required>
@@ -875,14 +814,18 @@ watch(codnegActivo, async () => {
           />
         </FormField>
 
-        <FormField v-if="negocioMeta.fields.direccion" label="Dirección" hint="Opcional">
-          <input
-            v-model="creating.direccion"
-            type="text"
-            class="input w-full px-3 py-2"
-            placeholder="Dirección del negocio"
-          />
-        </FormField>
+        <!-- Dirección: seleccionar del catálogo o crear una nueva -->
+        <div class="p-3 rounded-md border border-base space-y-2">
+          <h4 class="text-sm font-semibold text-main">Dirección</h4>
+          <div v-if="creating.coddir || creating.direccion" class="flex items-center gap-3 p-2 rounded bg-[var(--card-bg-2)]">
+            <span class="flex-1 text-sm text-main">{{ creating.direccion || `Dirección #${creating.coddir}` }}</span>
+            <button type="button" class="text-xs text-red-600 hover:underline" @click="quitarDireccion">Quitar</button>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" class="px-3 py-1.5 btn btn-secondary text-xs" @click="showDirSearch = true">Buscar existente</button>
+            <button type="button" class="px-3 py-1.5 btn btn-primary text-xs" @click="showDirCreate = true">Crear nueva</button>
+          </div>
+        </div>
 
         <FormField v-if="negocioMeta.fields.telefono" label="Teléfono" hint="Opcional">
           <input
@@ -918,14 +861,18 @@ watch(codnegActivo, async () => {
           <button
             type="button"
             class="btn btn-primary px-4 py-2 text-sm disabled:opacity-60"
-            :disabled="savingRow === 'new'"
+            :disabled="savingRow !== null"
             @click="createNegocio"
           >
-            {{ savingRow === 'new' ? 'Guardando…' : 'Crear negocio' }}
+            {{ savingRow !== null ? 'Guardando…' : (modalEditCodneg ? 'Guardar cambios' : 'Crear negocio') }}
           </button>
         </div>
       </div>
     </BaseModal>
+
+    <!-- Modales de dirección (buscar / crear) -->
+    <DireccionSearchModal :open="showDirSearch" @select="onDireccionSelected" @close="showDirSearch = false" />
+    <DireccionCreateModal :open="showDirCreate" @created="onDireccionSelected" @close="showDirCreate = false" />
 
     <section class="space-y-3">
       <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -942,6 +889,8 @@ watch(codnegActivo, async () => {
             placeholder="Buscar permiso..."
             class="input px-3 py-2 text-sm w-56"
           />
+          <button type="button" class="btn btn-secondary px-3 py-2 text-xs" @click="expandirTodos">Expandir</button>
+          <button type="button" class="btn btn-secondary px-3 py-2 text-xs" @click="colapsarTodos">Colapsar</button>
           <button
             type="button"
             class="btn btn-secondary px-4 py-2 text-sm disabled:opacity-60"
@@ -953,37 +902,44 @@ watch(codnegActivo, async () => {
         </div>
       </div>
 
-      <div class="card p-0 overflow-hidden">
-        <LoadingSpinner v-if="permisosLoading" />
+      <LoadingSpinner v-if="permisosLoading" />
 
-        <div v-else-if="permisosFiltrados.length === 0" class="px-4 py-10 text-center text-sm text-muted">
-          No hay permisos RBAC para mostrar.
-        </div>
+      <div v-else-if="permisosPorModulo.length === 0" class="card px-4 py-10 text-center text-sm text-muted">
+        No hay permisos RBAC para mostrar.
+      </div>
 
-        <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[760px] text-sm">
-            <thead>
-              <tr class="border-b text-left" style="border-color: var(--color-border); background: var(--color-bg-subtle, #f9fafb)">
-                <th class="px-4 py-3 text-muted font-medium w-20">#</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[260px]">Clave</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[260px]">Nombre</th>
-                <th class="px-4 py-3 text-muted font-medium min-w-[180px]">Módulo</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="permiso in permisosFiltrados"
-                :key="permiso.codprm"
-                class="border-b"
-                style="border-color: var(--color-border)"
-              >
-                <td class="px-4 py-3 text-muted">{{ permiso.codprm }}</td>
-                <td class="px-4 py-3 font-mono text-xs">{{ permiso.clave }}</td>
-                <td class="px-4 py-3">{{ permiso.nombre }}</td>
-                <td class="px-4 py-3 text-muted">{{ permiso.modulo || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
+      <!-- Acordeón por módulo -->
+      <div v-else class="space-y-2">
+        <div v-for="grupo in permisosPorModulo" :key="grupo.modulo" class="card p-0 overflow-hidden">
+          <button
+            type="button"
+            class="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-[var(--menu-hover)] transition-colors"
+            @click="toggleModulo(grupo.modulo)"
+          >
+            <span class="flex items-center gap-2 font-semibold text-main">
+              <span class="text-lg">{{ grupo.icono }}</span>
+              {{ grupo.modulo }}
+              <span class="text-xs font-normal text-muted">({{ grupo.items.length }})</span>
+            </span>
+            <span class="text-muted text-xs">{{ moduloAbierto(grupo.modulo) ? '▲' : '▼' }}</span>
+          </button>
+
+          <div v-if="moduloAbierto(grupo.modulo)" class="border-t" style="border-color: var(--color-border)">
+            <div
+              v-for="permiso in grupo.items"
+              :key="permiso.codprm"
+              class="flex items-center justify-between gap-3 px-4 py-2.5 border-b last:border-b-0"
+              style="border-color: var(--color-border)"
+            >
+              <div class="min-w-0">
+                <p class="text-sm text-main font-medium truncate">{{ accionLabel(permiso.clave, permiso.modulo) }}</p>
+                <p class="text-[11px] text-muted font-mono truncate">{{ permiso.clave }}</p>
+              </div>
+              <span class="shrink-0 inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-[var(--app-bg-2)] text-muted border border-base">
+                {{ grupo.modulo }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </section>

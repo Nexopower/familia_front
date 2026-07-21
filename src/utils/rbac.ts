@@ -1,18 +1,5 @@
 import { apiFetch } from './api'
-
-export type ModuleKey =
-  | 'PRODUCTOS'
-  | 'INVENTARIO'
-  | 'FACTURAS'
-  | 'RESERVAS'
-  | 'CONTABILIDAD'
-  | 'USUARIOS'
-
-export type VisibleModule = {
-  key: ModuleKey | string
-  visible?: boolean
-  enabled?: boolean
-}
+import type { ModuleKey } from '@/types'
 
 function storageKey(codusr: string, codneg: string | number) {
   return `rbac:visible-modules:${codusr}:${codneg}`

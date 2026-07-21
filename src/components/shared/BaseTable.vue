@@ -9,16 +9,11 @@
  *   </BaseTable>
  */
 
-export type Column = {
-  key: string
-  label: string
-  align?: 'left' | 'center' | 'right'
-  width?: string
-  sortable?: boolean
-}
+import type { TableColumn } from '@/types'
+export type { TableColumn as Column } from '@/types'
 
 defineProps<{
-  columns: Column[]
+  columns: TableColumn[]
   rows: any[]
   rowKey?: string
   loading?: boolean
